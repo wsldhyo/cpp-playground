@@ -2,22 +2,29 @@
 #include <chrono>
 #include <iostream>
 
-void task1() {
-  std::cout << "task1 running\n";
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+int add(int a, int b)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    return a + b;
 }
 
-void task2() {
-  std::cout << "task2 running\n";
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-}
+int main()
+{
+    ThreadPool pool(4);
+    // 多种形式的task
+    auto f1 = pool.submit(add, 1, 2);
+    auto f2 = pool.submit([](int x) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        return x * x;
+    }, 5);
+    auto f3 = pool.submit([] {
+        std::cout << "hello from thread\n";
+    });
 
-int main(int argc, char *argv[]) {
-  ThreadPool pool(4);
+    std::cout << "add result: " << f1.get() << std::endl;
+    std::cout << "square result: " << f2.get() << std::endl;
 
-  for (int i = 0; i < 5; i++) {
-    pool.submit(task1);
-    pool.submit(task2);
-  }
-  return 0;
+    f3.get(); // void future
+    return 0;
 }

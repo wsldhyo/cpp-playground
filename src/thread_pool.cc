@@ -44,14 +44,3 @@ ThreadPool::~ThreadPool() {
   std::cout << "thread pool finished\n";
 }
 
-void ThreadPool::submit(task_t task) {
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    if (stop_) { // 线程停止后，不应该再提交任务
-      std::cout << "Thread pool has stopped!submit task failed!\n";
-      return;
-    }
-    tasks_.push(task);
-  }
-  cond_.notify_one();
-}
