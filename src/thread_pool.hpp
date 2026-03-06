@@ -13,12 +13,12 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-class ThreadPool {
+class LThreadPool {
 public:
   using task_t = std::function<void()>; // 任务类型
-  explicit ThreadPool(
+  explicit LThreadPool(
       std::size_t thread_num = std::thread::hardware_concurrency());
-  ~ThreadPool();
+  ~LThreadPool();
 
   template <typename Func_t, typename... Args>
   auto submit(Func_t &&f, Args &&...args) -> std::future<
@@ -49,6 +49,8 @@ public:
 
     std::future<return_type> result = task->get_future();
 
+    auto wrapper = [task]() { (*task)(); };
+
     // task放入任务队列
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -57,11 +59,14 @@ public:
         std::cout << "Thread pool has stopped!submit task failed!\n";
         return std::future<return_type>(); // 返回一个空 future
       }
-
-      tasks_.emplace([task]() { (*task)(); });
+      if (!LThreadPool::is_worker_thread_) {
+        tasks_.push(wrapper);
+        cond_.notify_one();
+        return result;
+      }
     }
-
-    cond_.notify_one();
+    LThreadPool::local_tasks_.push(wrapper);
+    // cond_.notify_one(); 本地队列，无需通知其他线程
     return result;
   }
 
@@ -69,10 +74,11 @@ private:
   std::vector<std::thread> pool_;
   std::mutex mutex_; // 多个线程访问，需要保护tasks_
   std::queue<task_t> tasks_;
+  thread_local static std::queue<task_t> local_tasks_;
+  thread_local static bool is_worker_thread_;
   std::condition_variable cond_; // 通知有任务到达，分配线程执行任务
 
   bool stop_; // 线程池停止标记
 };
-
 
 #endif // THREAD_POOL_HPP
