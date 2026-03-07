@@ -52,6 +52,13 @@ public:
     auto wrapper = [task]() { (*task)(); };
 
     // task放入任务队列
+    if (is_worker_thread_) {
+      std::lock_guard<std::mutex> lock(local_tasks_->mutex);
+      local_tasks_->queue.push(wrapper);
+      // cond_.notify_one(); 本地队列，无需通知其他线程
+      return result;
+    }
+
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_) {
@@ -59,24 +66,38 @@ public:
         std::cout << "Thread pool has stopped!submit task failed!\n";
         return std::future<return_type>(); // 返回一个空 future
       }
-      if (!LThreadPool::is_worker_thread_) {
-        tasks_.push(wrapper);
-        cond_.notify_one();
-        return result;
-      }
+      tasks_.push(wrapper);
     }
-    LThreadPool::local_tasks_.push(wrapper);
-    // cond_.notify_one(); 本地队列，无需通知其他线程
+    cond_.notify_one();
     return result;
   }
 
 private:
+  /**
+   * @brief 任务窃取函数。
+   * 工作线程无任务可以执行时，尝试窃取其他工作线程的任务
+   *
+   * @return nullptr：窃取失败
+   *         non-nullptr： 窃取成功
+   */
+  task_t try_steal();
+
   std::vector<std::thread> pool_;
   std::mutex mutex_; // 多个线程访问，需要保护tasks_
   std::queue<task_t> tasks_;
-  thread_local static std::queue<task_t> local_tasks_;
+  struct LocalQueue {
+    std::queue<task_t> queue;
+    std::mutex mutex;
+  };
+  /// 本地队列, 指针确保非工作线程不会创建本地队列的实例
+  thread_local static std::unique_ptr<LocalQueue> local_tasks_;
+  /// submit中决定任务添加到本地队列还是全局队列
   thread_local static bool is_worker_thread_;
-  std::condition_variable cond_; // 通知有任务到达，分配线程执行任务
+  /// 注册所有线程的thread_local队列， 以支持其他线程窃取任务
+  std::vector<LocalQueue *> tasks_ptrs_;
+  std::mutex tasks_ptrs_mutex_;
+  /// 通知有任务到达，分配线程执行任务
+  std::condition_variable cond_;
 
   bool stop_; // 线程池停止标记
 };
