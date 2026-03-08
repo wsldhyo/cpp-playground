@@ -1,6 +1,7 @@
 #ifndef THREAD_POOL_HPP
 #define THREAD_POOL_HPP
 
+#include "work_steal_queue.hpp"
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
@@ -8,7 +9,6 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -52,13 +52,11 @@ public:
     auto wrapper = [task]() { (*task)(); };
 
     // task放入任务队列
-    if (is_worker_thread_) {
-      std::lock_guard<std::mutex> lock(local_tasks_->mutex);
-      local_tasks_->queue.push(wrapper);
-      // cond_.notify_one(); 本地队列，无需通知其他线程
+    if (local_tasks_ != nullptr) {
+      local_tasks_->push(std::move(wrapper));
+      // cond_.notify_one(); 本地队j列，无需通知其他线程
       return result;
     }
-
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_) {
@@ -66,7 +64,8 @@ public:
         std::cout << "Thread pool has stopped!submit task failed!\n";
         return std::future<return_type>(); // 返回一个空 future
       }
-      tasks_.push(wrapper);
+      // 放到临界区外的话，有可能push到全局队列前，中途其他线程将stop置为true，破坏stop_后不放任务的语义
+      global_tasks_.push(std::move(wrapper));
     }
     cond_.notify_one();
     return result;
@@ -84,22 +83,14 @@ private:
 
   std::vector<std::thread> pool_;
   std::mutex mutex_; // 多个线程访问，需要保护tasks_
-  std::queue<task_t> tasks_;
-  struct LocalQueue {
-    std::queue<task_t> queue;
-    std::mutex mutex;
-  };
+  WorkStealQue<task_t> global_tasks_;
   /// 本地队列, 指针确保非工作线程不会创建本地队列的实例
-  thread_local static std::unique_ptr<LocalQueue> local_tasks_;
-  /// submit中决定任务添加到本地队列还是全局队列
-  thread_local static bool is_worker_thread_;
-  /// 注册所有线程的thread_local队列， 以支持其他线程窃取任务
-  std::vector<LocalQueue *> tasks_ptrs_;
-  std::mutex tasks_ptrs_mutex_;
+  std::vector<std::unique_ptr<WorkStealQue<task_t>>> local_tasks_queue_;
+  thread_local static WorkStealQue<task_t> *local_tasks_;
   /// 通知有任务到达，分配线程执行任务
   std::condition_variable cond_;
 
-  bool stop_; // 线程池停止标记
+  bool stop_{false};
 };
 
 #endif // THREAD_POOL_HPP
