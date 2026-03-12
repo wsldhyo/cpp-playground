@@ -72,14 +72,7 @@ public:
   }
 
 private:
-  /**
-   * @brief 任务窃取函数。
-   * 工作线程无任务可以执行时，尝试窃取其他工作线程的任务
-   *
-   * @return nullptr：窃取失败
-   *         non-nullptr： 窃取成功
-   */
-  task_t try_steal();
+  bool try_steal_tasks();
 
   std::vector<std::thread> pool_;
   std::mutex mutex_; // 多个线程访问，需要保护tasks_

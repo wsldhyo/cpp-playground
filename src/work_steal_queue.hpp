@@ -101,6 +101,35 @@ public:
     return result;
   }
 
+  bool try_steal(std::vector<T> &vals) {
+    bool result{false};
+
+    if (!mutex_.try_lock()) {
+      return result;
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_, std::adopt_lock);
+
+      size_t n = deque_.size() / 2; // 偷一半
+      if (n == 0) {
+        return false; // 元素太少，不偷
+      }
+
+      // 从前面偷 n 个
+      auto begin = deque_.begin();
+      auto end = begin + n;
+
+      // 移动到 vals
+      vals.insert(vals.end(), std::make_move_iterator(begin),
+                  std::make_move_iterator(end));
+
+      // 删除 deque 中的这些元素
+      deque_.erase(begin, end);
+    }
+    result = true;
+    return result;
+  }
+
   bool empty() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return deque_.empty();

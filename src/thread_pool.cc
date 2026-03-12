@@ -5,6 +5,7 @@
 #include <mutex>
 #include <random>
 #include <thread>
+#include <vector>
 
 thread_local WorkStealQue<LThreadPool::task_t> *LThreadPool::local_tasks_{
     nullptr};
@@ -25,7 +26,9 @@ LThreadPool::LThreadPool(std::size_t thread_num) : stop_(false) {
           if (!global_tasks_.try_pop(task)) {
 
             // 3. 从其他线程头部 steal
-            task = try_steal();
+            if (try_steal_tasks()) {
+              continue;
+            }
           }
         }
         // 4. execute
@@ -49,13 +52,10 @@ LThreadPool::LThreadPool(std::size_t thread_num) : stop_(false) {
           }
           lock.unlock();
           // 检查其他线程队列
-          task = try_steal();
-          if (task) {
-            task();
-          } else {
-            // 线程结束，移除队列指针，防止其他线程窃取悬空队列任务
-            break;
+          if (try_steal_tasks()) {
+            continue; // 窃取到了其他线程的任务
           }
+          break; // 其他线程也没有任务
         }
       }
     });
@@ -78,7 +78,7 @@ LThreadPool::~LThreadPool() {
   std::cout << "thread pool finished\n";
 }
 
-LThreadPool::task_t LThreadPool::try_steal() {
+bool LThreadPool::try_steal_tasks() {
   task_t result{nullptr};
   thread_local std::mt19937 generator{std::random_device{}()};
   // 从随机位置开始偷取，避免热点偷取同一个线程，锁竞争大
@@ -87,18 +87,20 @@ LThreadPool::task_t LThreadPool::try_steal() {
 
   size = local_tasks_queue_.size();
   if (size == 0) {
-    return result;
+    return false;
   }
   start = generator() % size;
-
+  std::vector<task_t> tasks;
   for (size_t i = 0; i < size; i++) {
     auto &local_queue = local_tasks_queue_[(start + i) % size];
-
+    if (!local_queue)
+      continue;
     if (local_tasks_ == local_queue.get()) // 不自己偷自己
       continue;
-    if (local_queue->try_steal(result)) {
-      break;
+    if (local_queue->try_steal(tasks)) {
+      local_tasks_->push(std::move(tasks));
+      return true;
     }
   }
-  return result;
+  return false;
 }
