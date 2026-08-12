@@ -19,6 +19,12 @@ void reap_child_process(int sig) {
   }
 }
 
+/**
+ * @brief fork子进程，单独为一个客户端提供服务
+ * 
+ * @param listen_sock_fd 监听socket fd，给子进程关闭
+ * @param clnt_fd 客户端socket fd，与客户端通信
+ */
 void handle_client_process(int listen_sock_fd, int clnt_fd) {
   pid_t pid = fork();
   if (pid == 0) {
