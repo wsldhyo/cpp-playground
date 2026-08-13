@@ -19,4 +19,6 @@ void bind_and_listen(int listen_sock_fd, int backlog, sockaddr_in *addr,
 
 int accept_client(int listen_sock_fd);
 
+
+bool writelen(int clnt_fd, const char* buf, size_t len);
 #endif

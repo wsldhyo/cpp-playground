@@ -3,6 +3,7 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -15,7 +16,7 @@
  */
 void reap_child_process(int sig) {
   // 通过循环一次性处理多个同时退出的子进程
-  while (waitpid(-1, NULL, WNOWAIT > 0)) {
+  while (waitpid(-1, NULL, WNOHANG > 0)) {
   }
 }
 
@@ -54,7 +55,7 @@ void handle_clnt_req(int clnt_fd) {
     if (read_len <= 0) {
       break;
     }
-    write(clnt_fd, buf, read_len);
+    writelen(clnt_fd, buf, read_len);
   }
   close(clnt_fd);
 }
