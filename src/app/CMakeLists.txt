@@ -1,30 +1,49 @@
-add_executable(server server_main.cc)
-add_executable(client client_main.cc)
-add_executable(userver udp_serv_main.cc)
-add_executable(uclient udp_clnt_main.cc)
-add_executable(mpst_server mpst_tcp_server_main.cc)
-add_executable(spmt_server spmt_tcp_server_main.cc)
-target_link_libraries(server
-    PRIVATE server_core
-    PRIVATE common
+function(add_server_executable target source core)
+    add_executable(${target}
+        ${source}
+    )
+
+    target_link_libraries(${target}
+        PRIVATE ${core}
+        PRIVATE common
+    )
+endfunction()
+
+add_server_executable(server
+    server_main.cc
+    server_core
 )
-target_link_libraries(client
-    PRIVATE client_core
-    PRIVATE common
+
+add_server_executable(client
+    client_main.cc
+    client_core
 )
-target_link_libraries(userver
-    PRIVATE userver_core
-    PRIVATE common
+
+add_server_executable(userver
+    udp_serv_main.cc
+    userver_core
 )
-target_link_libraries(uclient
-    PRIVATE uclient_core
-    PRIVATE common
+
+add_server_executable(uclient
+    udp_clnt_main.cc
+    uclient_core
 )
-target_link_libraries(mpst_server
-    PRIVATE mpst_server_core
-    PRIVATE common
+
+add_server_executable(mpst_server
+    mpst_tcp_server_main.cc
+    mpst_server_core
 )
+
+add_server_executable(spmt_server
+    spmt_tcp_server_main.cc
+    spmt_server_core
+)
+find_package(Threads REQUIRED)
 target_link_libraries(spmt_server
-    PRIVATE spmt_server_core
-    PRIVATE common
+    PRIVATE Threads::Threads
+)
+
+add_server_executable(epoll_tcp_server
+    epoll_tcp_server_main.cc
+    epoll_tcp_server_core
 )

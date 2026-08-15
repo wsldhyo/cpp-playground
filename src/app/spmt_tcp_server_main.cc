@@ -19,7 +19,7 @@ void accept_loop(int listen_sock_fd) {
     printf("connected to new client\n");
     // 创建线程，处理客户端连接
     pthread_t tid;
-    int* new_clnt_fd = (int*)malloc(sizeof(int));
+    int *new_clnt_fd = (int *)malloc(sizeof(int));
     *new_clnt_fd = clnt_fd;
     pthread_create(&tid, nullptr, handle_client, new_clnt_fd);
     pthread_detach(tid);

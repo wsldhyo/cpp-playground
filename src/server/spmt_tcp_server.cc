@@ -1,25 +1,19 @@
+#include "spmt_tcp_server.hpp"
 #include "common.hpp"
-#include "cstring"
-#include <arpa/inet.h>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <iostream>
-#include <netinet/in.h>
-#include <pthread.h>
-#include <sys/socket.h>
+#include <malloc.h>
 #include <unistd.h>
-void* handle_client(void *arg) {
+void *handle_client(void *arg) {
   int clnt_fd = *(int *)arg;
   free(arg);
   char buf[BUF_SIZE]{0};
   while (true) {
     memset(buf, 0, BUF_SIZE);
-    int read_len =  read(clnt_fd, buf, BUF_SIZE);
+    int read_len = read(clnt_fd, buf, BUF_SIZE);
     if (read_len <= 0) {
       break;
     }
-    std::cout << "recv data from client: " << buf << '\n';
+    printf("recv data from client: %s\n", buf);
     // ehco 回显
     writelen(clnt_fd, buf, read_len);
   }

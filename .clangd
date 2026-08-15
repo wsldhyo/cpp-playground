@@ -1,5 +1,0 @@
-CompileFlags:
-  Remove:
-    - -fmodules-ts
-    - -fmodule-*
-    - -fdeps-*

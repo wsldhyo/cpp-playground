@@ -7,11 +7,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include <unistd.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 bool str2num(char const *str, int32_t &res) {
   if (!str)
@@ -136,18 +137,24 @@ int accept_client(int listen_sock_fd) {
   }
 }
 
-bool writelen(int clnt_fd, const char* buf, size_t len)
-{
-    size_t total = 0;
-    while (total < len) {
-        ssize_t n = write(clnt_fd, buf + total, len - total);
+bool writelen(int clnt_fd, const char *buf, size_t len) {
+  size_t total = 0;
+  while (total < len) {
+    ssize_t n = write(clnt_fd, buf + total, len - total);
 
-        if (n <= 0) {
-            return false;
-        }
-
-        total += static_cast<size_t>(n);
+    if (n <= 0) {
+      return false;
     }
 
-    return true;
+    total += static_cast<size_t>(n);
+  }
+
+  return true;
+}
+
+int set_nonblocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1)
+    return -1;
+  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }

@@ -5,6 +5,7 @@
 constexpr int BUF_SIZE{1024};
 constexpr int PORT{8080};
 constexpr int BACKLOG{128};
+constexpr int MAX_EVENTS{1024};
 
 bool str2num(char const *str, int32_t &res);
 bool str2numV2(char const *str, int32_t &res);
@@ -21,4 +22,6 @@ int accept_client(int listen_sock_fd);
 
 
 bool writelen(int clnt_fd, const char* buf, size_t len);
+
+int set_nonblocking(int fd);
 #endif
