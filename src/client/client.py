@@ -1,7 +1,7 @@
 import socket
 import threading
 
-data = b'A' * 100_000_000
+data = b'A' * 100
 sock = socket.socket()
 sock.connect(('127.0.0.1', 8080))
 

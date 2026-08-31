@@ -85,6 +85,8 @@ void connection_handle_read(ETcpChannel *etch) {
   }
 }
 
+// 可以返回值，在channel_handle_event判断是否将缓冲区写入socket完成，
+// 完成的话根据read_paused决定是否调用一次read，无需conection_after_event回调
 void connection_handle_write(ETcpChannel *etch) {
   ETcpConnection *conn = (ETcpConnection *)etch->owner;
   // 如果刷出遇到致命错误，关闭连接
@@ -191,7 +193,7 @@ int connection_send(ETcpConnection *conn, const char *data, size_t len) {
 
   // 仅在缓冲区之前为空时，尝试直接刷出
   // 背压发生时：当第一个包触发write返回EAGAIN后，并监听EPOLLOUT事件
-  // pending变为非0，connection_send只拷贝数据，不执行write(大概率返回EAGAIN)，减少系统调用
+  // pending变为非0，connection_send只拷贝数据，不执行write(大概率返回EAGIN)，减少系统调用
   if (pending == 0) {
     if (connection_flush(conn) < 0) {
       return -2; // 致命错误，告诉调用者连接已不可用

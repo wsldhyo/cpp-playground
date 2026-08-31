@@ -47,3 +47,9 @@ add_server_executable(epoll_tcp_server
     epoll_tcp_server_main.cc
     epoll_tcp_server_core
 )
+
+
+add_server_executable(iouring_tcp_server
+    iouring_tcp_server_main.cc
+    iouring_tcp_server_core
+)

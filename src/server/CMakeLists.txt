@@ -42,3 +42,14 @@ add_server_library(epoll_tcp_server_core
     epoll_tcp_acceptor.cc
     epoll_tcp_connection.cc
 )
+
+
+
+add_server_library(iouring_tcp_server_core
+    iouring_acceptor.cc
+    iouring_connection.cc
+    iouring_eventloop.cc 
+    iouring_proactor.cc
+    iouring_request.cc
+)
+target_link_libraries(iouring_tcp_server_core PRIVATE uring)
