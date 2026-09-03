@@ -1,17 +1,15 @@
 #include "iouring_request.hpp"
 
 #include <cstdlib>
+#include <cstring>
 
 Request *request_create(OpType type) {
   Request *req = (Request *)malloc(sizeof(Request));
   if (!req)
     return NULL;
+  memset(req, 0, sizeof(Request));
   req->type = type;
-  req->loop = NULL;
-  req->owner.conn = NULL;
   req->fd = -1;
-  req->buf = NULL;
-  req->len = 0;
   return req;
 }
 

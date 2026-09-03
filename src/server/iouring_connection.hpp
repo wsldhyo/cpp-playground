@@ -2,47 +2,21 @@
 #define IOURING_CONNECTION_HPP
 #include "common.hpp"
 
-// struct Proactor;
-//
-// typedef struct Connection {
-//   struct Proactor *proactor;
-//   int fd;
-//   char read_buf[BUF_SIZE];
-//   char write_buf[BUF_SIZE];
-//   size_t write_len;
-//   size_t write_offset;
-//   int closed;
-//   std::atomic_int ref_count; // 引用计数，用于生命周期管理
-// } Connection;
-//
-// // 引用计数管理
-// void connection_ref(Connection *conn);
-// void connection_unref(Connection *conn); // 计数减为 0 时释放
-//
-// // 创建/销毁连接
-// Connection *connection_create(struct Proactor *proactor, int fd);
-// void connection_destroy(Connection *conn);
-//
-// // 提交异步读、写、关闭连接
-// void submit_read(Connection *conn);
-// void submit_write(Connection *conn);
-// void connection_close(Connection *conn);
-
-struct EventLoop;
+struct IOService;
 typedef struct Connection {
-  struct EventLoop *loop;
+  struct IOService *service;
   int fd;
   char read_buf[BUF_SIZE];
   char write_buf[BUF_SIZE];
   size_t write_len;
   size_t write_offset;
-  int read_pending;
-  int write_pending;
+  int read_pending;  // 标记是否有读/写请求已经提交但未完成，防止重复提交
+  int write_pending; 
   int closed;
 
 } Connection;
 
-Connection *connection_create(struct EventLoop *loop, int fd);
+Connection *connection_create(struct IOService *service, int fd);
 
 void connection_close(Connection *conn);
 
