@@ -1,0 +1,28 @@
+{
+    "C_Cpp.intellSenseEngine":"disabled", 
+    "clangd.path": "clangd",  // 直接使用环境变量
+    "clangd.arguments": [
+        // 在后台自动分析文件（基于complie_commands)
+        "--background-index",
+        // 标记compelie_commands.json文件的目录位置
+        "--compile-commands-dir=build",
+        // 同时开启的任务数量
+        "-j=12",
+        // clang-tidy功能
+        "--clang-tidy",
+        // 全局补全（会自动补充头文件）
+        "--all-scopes-completion",
+        // 详细补全
+        "--completion-style=detailed",
+        // 补充头文件
+        "--header-insertion=iwyu",
+        // pch优化的位置
+        "--pch-storage=disk",
+    ],
+    "cmake.options.statusBarVisibility": "compact",
+    "cmake.pinnedCommands": [
+        "workbench.action.tasks.configureTaskRunner",
+        "workbench.action.tasks.runTask"
+    ],
+    "editor.tabSize": 4,
+}
