@@ -264,7 +264,8 @@ public:
   }
 
   // 禁止解引用和箭头运算符
-  // *ptr 会返回数组的第一个元素，会让人误以为该智能指针管理的是单个T对象，而不是数组
+  // *ptr
+  // 会返回数组的第一个元素，会让人误以为该智能指针管理的是单个T对象，而不是数组
   element_type &operator*() const = delete;
   pointer operator->() const = delete;
 
@@ -285,5 +286,36 @@ public:
 private:
   UniquePtrImpl<element_type, deleter_type> impl_; // 复用原实现
 };
+
+// 单个对象
+template <typename T, typename... Args,
+          typename = std::enable_if_t<
+              !std::is_array_v<T>>> // T 不能是数组类型如int[]、int[5]
+UniquePtr<T> make_uniqueptr(Args... args) {
+  return UniquePtr<T>(new T(std::forward<Args>(args)...));
+}
+
+// 未定边界数组T[]，数组大小由函数参数指定
+template <typename T, typename = std::enable_if_t<std::is_array_v<T> &&
+                                                  std::extent_v<T> == 0>>
+UniquePtr<T> make_uniqueptr(std::size_t size) {
+  using E = std::remove_extent_t<T>;
+  return UniquePtr<T>(new E[size]());
+}
+
+/*
+ 已知边界数组版本T[N]，数组大小由模板参数编译期指定：禁止
+ UniquePtr只特化了UniquePtr<T[]>, 它与UniquePtr<T[N]>不是相同类型，原因如下
+    构造 unique_ptr<T[N]> 需要传入一个指向固定大小为N的数组的指针，即 T(*)[N] 类型。而
+    new T[N] 返回的是 T*
+
+    make_uniqueptr返回的UniquePtr<T[N]>，
+    不支持operator[]，因为UniquePtr内部指针类型是T(*)[N], 是指向整个数组的指针，对该
+    指针的解引用得到整个数组，指针算术移动一个数组距离，而[n]等价于*(ptr + n)，与期望
+    的第n个元素语义冲突
+*/
+template <typename T, typename = std::enable_if_t<std::is_array_v<T> &&
+                                                  std::extent_v<T> != 0>>
+UniquePtr<T> make_uniqueptr() = delete;
 } // namespace scratch
 #endif // UNIQUE_PTR_HPP

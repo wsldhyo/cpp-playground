@@ -34,6 +34,7 @@ void test_resource_management();
 void test_deleter();
 void test_ebo();
 void test_unique_ptr_array();
+void test_make_uniqueptr();
 
 int main() {
   test_default_constructor();
@@ -52,6 +53,7 @@ int main() {
   test_deleter();
   test_ebo();
   test_unique_ptr_array();
+  test_make_uniqueptr();
   std::cout << "\nAll tests passed successfully!\n";
   return 0;
 }
@@ -355,163 +357,238 @@ void test_ebo() {
   };
   static_assert(sizeof(UniquePtr<int, NonEmptyDeleter>) > sizeof(int *),
                 "EBO should not compress non-empty deleter");
-
 }
 
-
-
-
 // 检测 operator* 是否存在
-template<typename T, typename = void>
+template <typename T, typename = void>
 struct has_dereference : std::false_type {};
 
-template<typename T>
-struct has_dereference<T, std::void_t<decltype(*std::declval<T>())>> : std::true_type {};
+template <typename T>
+struct has_dereference<T, std::void_t<decltype(*std::declval<T>())>>
+    : std::true_type {};
 
 // 检测 operator-> 是否存在
-template<typename T, typename = void>
-struct has_arrow : std::false_type {};
+template <typename T, typename = void> struct has_arrow : std::false_type {};
 
-template<typename T>
-struct has_arrow<T, std::void_t<decltype(std::declval<T>().operator->())>> : std::true_type {};
+template <typename T>
+struct has_arrow<T, std::void_t<decltype(std::declval<T>().operator->())>>
+    : std::true_type {};
 
 void test_unique_ptr_array() {
-    using scratch::UniquePtr;
-    using UP = UniquePtr<int[]>;
+  using scratch::UniquePtr;
+  using UP = UniquePtr<int[]>;
 
-    // 1. 默认构造
+  // 1. 默认构造
+  {
+    UP p;
+    assert(p.get() == nullptr);
+    assert(!p);
+    assert(p == nullptr);
+    assert(nullptr == p);
+  }
+
+  // 2. 从裸指针构造、下标访问
+  {
+    UP p(new int[5]);
+    assert(p.get() != nullptr);
+    assert(p);
+    assert(p != nullptr);
+
+    for (int i = 0; i < 5; ++i) {
+      p[i] = i * 10;
+    }
+    for (int i = 0; i < 5; ++i) {
+      assert(p[i] == i * 10);
+    }
+  } // 析构自动调用 delete[]
+
+  // 3. release()
+  {
+    UP p(new int[3]);
+    int *raw = p.release();
+    assert(p.get() == nullptr);
+    assert(!p);
+    assert(raw != nullptr);
+    delete[] raw; // 手动释放
+  }
+
+  // 4. reset(pointer)
+  {
+    UP p(new int[2]);
+    p[0] = 42;
+    p.reset(new int[4]);
+    assert(p.get() != nullptr);
+    assert(p[0] != 42); // 新数组未初始化
+    p[0] = 7;
+    assert(p[0] == 7);
+  }
+
+  // 5. reset(nullptr)
+  {
+    UP p(new int[1]);
+    p.reset();
+    assert(p.get() == nullptr);
+  }
+
+  // 6. 移动构造
+  {
+    UP p1(new int[3]);
+    p1[0] = 100;
+    UP p2(std::move(p1));
+    assert(p1.get() == nullptr);
+    assert(p2.get() != nullptr);
+    assert(p2[0] == 100);
+  }
+
+  // 7. 移动赋值
+  {
+    UP p1(new int[2]);
+    p1[0] = 11;
+    UP p2(new int[5]);
+    p2[0] = 22;
+    p2 = std::move(p1);
+    assert(p1.get() == nullptr);
+    assert(p2.get() != nullptr);
+    assert(p2[0] == 11);
+  }
+
+  // 8. 自移动赋值（应安全）
+  {
+    UP p(new int[1]);
+    p[0] = 9;
+    p = std::move(p); // 自赋值
+    assert(p.get() != nullptr);
+    assert(p[0] == 9);
+  }
+
+  // 9. swap()
+  {
+    UP p1(new int[2]);
+    UP p2(new int[4]);
+    p1[0] = 1;
+    p2[0] = 2;
+    p1.swap(p2);
+    assert(p1[0] == 2);
+    assert(p2[0] == 1);
+  }
+
+  // 10. 自定义删除器
+  {
+    delete_count = 0;
     {
-        UP p;
-        assert(p.get() == nullptr);
-        assert(!p);
-        assert(p == nullptr);
-        assert(nullptr == p);
+      UniquePtr<int[], CountingDeleter> p(new int[3], CountingDeleter{});
+      assert(p.get() != nullptr);
+      p.reset(); // 调用删除器
+      assert(delete_count == 1);
+    } // 析构时不应再调用
+    assert(delete_count == 1);
+
+    delete_count = 0;
+    {
+      UniquePtr<int[], CountingDeleter> p(new int[3], CountingDeleter{});
+      p.reset(new int[5]); // 释放旧数组，调用删除器
+      assert(delete_count == 1);
+    } // 释放新数组，再次调用
+    assert(delete_count == 2);
+  }
+
+  // 11. 与 nullptr 比较
+  {
+    UP p;
+    assert(p == nullptr);
+    assert(nullptr == p);
+    assert(!(p != nullptr));
+    p.reset(new int[1]);
+    assert(p != nullptr);
+    assert(nullptr != p);
+    assert(!(p == nullptr));
+  }
+
+  // 12. 编译期验证：拷贝构造和拷贝赋值被删除
+  static_assert(!std::is_copy_constructible_v<UP>,
+                "UniquePtr<T[]> must not be copy constructible");
+  static_assert(!std::is_copy_assignable_v<UP>,
+                "UniquePtr<T[]> must not be copy assignable");
+
+  // 13. 编译期验证：operator* 和 operator-> 被删除
+  static_assert(!has_dereference<UP>::value,
+                "operator* must be deleted for array specialization");
+  static_assert(!has_arrow<UP>::value,
+                "operator-> must be deleted for array specialization");
+
+  std::cout << "All array UniquePtr tests passed!\n";
+}
+
+void test_make_uniqueptr() {
+  using scratch::make_uniqueptr;
+  // 1. 测试单个对象版本 make_uniqueptr
+  {
+    auto p_int = make_uniqueptr<int>(42);
+    assert(*p_int == 42);
+
+    struct Point {
+      int x, y;
+      Point(int a, int b) : x(a), y(b) {}
+    };
+    auto p_point = make_uniqueptr<Point>(3, 4);
+    assert(p_point->x == 3 && p_point->y == 4);
+  }
+
+  // 2. 测试未定边界数组版本 make_unique<T[]>(size)
+  {
+    constexpr std::size_t N = 5;
+    auto arr = make_uniqueptr<int[]>(N);
+
+    // 验证数组元素被值初始化为零（new E[size]() 的效果）
+    for (std::size_t i = 0; i < N; ++i) {
+      assert(arr[i] == 0);
     }
 
-    // 2. 从裸指针构造、下标访问
-    {
-        UP p(new int[5]);
-        assert(p.get() != nullptr);
-        assert(p);
-        assert(p != nullptr);
+    // 验证可以修改元素
+    arr[0] = 10;
+    arr[4] = 20;
+    assert(arr[0] == 10 && arr[4] == 20);
+  }
 
-        for (int i = 0; i < 5; ++i) {
-            p[i] = i * 10;
-        }
-        for (int i = 0; i < 5; ++i) {
-            assert(p[i] == i * 10);
-        }
-    } // 析构自动调用 delete[]
+  // 3. 验证已知边界数组版本被删除（无法编译）
+  //    取消下面这行注释将导致编译错误：
+  //    auto arr_fixed = make_unique<int[5]>();
+  // 因此这里仅通过注释说明，不实际测试编译错误。
 
-    // 3. release()
-    {
-        UP p(new int[3]);
-        int* raw = p.release();
-        assert(p.get() == nullptr);
-        assert(!p);
-        assert(raw != nullptr);
-        delete[] raw; // 手动释放
+  // 可选：使用 SFINAE 检测确认该重载不可调用（但直接取被删除函数地址可能失败，
+  // 这里不演示，仅通过注释表达设计意图）。// 1. 测试单个对象版本 make_uniqueptr
+  {
+    auto p_int = make_uniqueptr<int>(42);
+    assert(*p_int == 42);
+
+    struct Point {
+      int x, y;
+      Point(int a, int b) : x(a), y(b) {}
+    };
+    auto p_point = make_uniqueptr<Point>(3, 4);
+    assert(p_point->x == 3 && p_point->y == 4);
+  }
+
+  // 2. 测试未定边界数组版本 make_unique<T[]>(size)
+  {
+    constexpr std::size_t N = 5;
+    auto arr = make_uniqueptr<int[]>(N);
+
+    // 验证数组元素被值初始化为零（new E[size]() 的效果）
+    for (std::size_t i = 0; i < N; ++i) {
+      assert(arr[i] == 0);
     }
 
-    // 4. reset(pointer)
-    {
-        UP p(new int[2]);
-        p[0] = 42;
-        p.reset(new int[4]);
-        assert(p.get() != nullptr);
-        assert(p[0] != 42); // 新数组未初始化
-        p[0] = 7;
-        assert(p[0] == 7);
-    }
+    // 验证可以修改元素
+    arr[0] = 10;
+    arr[4] = 20;
+    assert(arr[0] == 10 && arr[4] == 20);
+  }
 
-    // 5. reset(nullptr)
-    {
-        UP p(new int[1]);
-        p.reset();
-        assert(p.get() == nullptr);
-    }
+  // 3. 验证已知边界数组版本被删除（无法编译）
+  //    取消下面这行注释将导致编译错误：
+  //    auto arr_fixed = make_unique<int[5]>();
+  // 因此这里仅通过注释说明，不实际测试编译错误。
 
-    // 6. 移动构造
-    {
-        UP p1(new int[3]);
-        p1[0] = 100;
-        UP p2(std::move(p1));
-        assert(p1.get() == nullptr);
-        assert(p2.get() != nullptr);
-        assert(p2[0] == 100);
-    }
-
-    // 7. 移动赋值
-    {
-        UP p1(new int[2]);
-        p1[0] = 11;
-        UP p2(new int[5]);
-        p2[0] = 22;
-        p2 = std::move(p1);
-        assert(p1.get() == nullptr);
-        assert(p2.get() != nullptr);
-        assert(p2[0] == 11);
-    }
-
-    // 8. 自移动赋值（应安全）
-    {
-        UP p(new int[1]);
-        p[0] = 9;
-        p = std::move(p); // 自赋值
-        assert(p.get() != nullptr);
-        assert(p[0] == 9);
-    }
-
-    // 9. swap()
-    {
-        UP p1(new int[2]);
-        UP p2(new int[4]);
-        p1[0] = 1;
-        p2[0] = 2;
-        p1.swap(p2);
-        assert(p1[0] == 2);
-        assert(p2[0] == 1);
-    }
-
-    // 10. 自定义删除器
-    {
-        delete_count = 0;
-        {
-            UniquePtr<int[], CountingDeleter> p(new int[3], CountingDeleter{});
-            assert(p.get() != nullptr);
-            p.reset(); // 调用删除器
-            assert(delete_count == 1);
-        } // 析构时不应再调用
-        assert(delete_count == 1);
-
-        delete_count = 0;
-        {
-            UniquePtr<int[], CountingDeleter> p(new int[3], CountingDeleter{});
-            p.reset(new int[5]); // 释放旧数组，调用删除器
-            assert(delete_count == 1);
-        } // 释放新数组，再次调用
-        assert(delete_count == 2);
-    }
-
-    // 11. 与 nullptr 比较
-    {
-        UP p;
-        assert(p == nullptr);
-        assert(nullptr == p);
-        assert(!(p != nullptr));
-        p.reset(new int[1]);
-        assert(p != nullptr);
-        assert(nullptr != p);
-        assert(!(p == nullptr));
-    }
-
-    // 12. 编译期验证：拷贝构造和拷贝赋值被删除
-    static_assert(!std::is_copy_constructible_v<UP>, "UniquePtr<T[]> must not be copy constructible");
-    static_assert(!std::is_copy_assignable_v<UP>, "UniquePtr<T[]> must not be copy assignable");
-
-    // 13. 编译期验证：operator* 和 operator-> 被删除
-    static_assert(!has_dereference<UP>::value, "operator* must be deleted for array specialization");
-    static_assert(!has_arrow<UP>::value, "operator-> must be deleted for array specialization");
-
-    std::cout << "All array UniquePtr tests passed!\n";
+  // 也可使用 SFINAE 检测确认该重载不可调用（但直接取被删除函数地址可能失败，
 }
