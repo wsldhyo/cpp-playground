@@ -15,3 +15,5 @@ message(STATUS "OUTPUT_DIR  : ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message(STATUS "===============================================")
 
 add_subdirectory(src)
+enable_testing()
+add_subdirectory(tests)
