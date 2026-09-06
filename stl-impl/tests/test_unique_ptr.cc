@@ -32,6 +32,7 @@ void test_dereference_operators();
 void test_bool_conversion();
 void test_resource_management();
 void test_deleter();
+void test_ebo();
 
 int main() {
   test_default_constructor();
@@ -48,6 +49,7 @@ int main() {
   test_bool_conversion();
   test_resource_management();
   test_deleter();
+  test_ebo();
   std::cout << "\nAll tests passed successfully!\n";
   return 0;
 }
@@ -328,4 +330,28 @@ void test_deleter() {
     auto &del = p.get_deleter();
     assert(del.id == 7);
   }
+}
+//
+// 测试 EBO
+void test_ebo() {
+  using scratch::UniquePtr;
+  // 1. 默认删除器 default_deleter<T> 是空类，UniquePtr<int> 大小应等于 int*
+  static_assert(sizeof(UniquePtr<int>) == sizeof(int *),
+                "EBO failed: default deleter should be empty and compressed");
+
+  // 2. 自定义空删除器，也应被压缩
+  struct EmptyDeleter {
+    void operator()(int *) const {}
+  };
+  static_assert(sizeof(UniquePtr<int, EmptyDeleter>) == sizeof(int *),
+                "EBO failed: custom empty deleter should be compressed");
+
+  // 3. 非空删除器，大小应大于裸指针
+  struct NonEmptyDeleter {
+    int state;
+    void operator()(int *) const {}
+  };
+  static_assert(sizeof(UniquePtr<int, NonEmptyDeleter>) > sizeof(int *),
+                "EBO should not compress non-empty deleter");
+
 }

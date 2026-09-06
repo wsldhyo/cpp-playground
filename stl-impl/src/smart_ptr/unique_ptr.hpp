@@ -1,13 +1,13 @@
 #ifndef UNIQUE_PTR_HPP
 #define UNIQUE_PTR_HPP
 #include <algorithm> // std::swap
+#include <tuple>     // for EBO
 #include <utility>   // std::exchange
 namespace scratch {
 
 /**
  * @brief UniquePtr删除器
  *   允许UniquePtr自定义删除行为
- * @tparam T
  */
 template <typename T> struct default_deleter {
   constexpr default_deleter() noexcept = default;
@@ -30,26 +30,26 @@ public:
   // 默认构造，删除器没有默认构造时则不提供默认构造
   template <typename D = deleter_type,
             typename = std::enable_if_t<std::is_default_constructible_v<D>>>
-  constexpr UniquePtr() noexcept : obj_(nullptr), deleter_() {}
+  constexpr UniquePtr() noexcept : data_(nullptr, deleter_type{}) {}
   // 移动函数
   constexpr UniquePtr(UniquePtr &&other) noexcept
-      : obj_(std::exchange(other.obj_, nullptr)),
-        deleter_(std::move(other.deleter_)) {}
+      : data_(std::exchange(other.ptr(), nullptr), std::move(other.deleter())) {
+  }
 
   constexpr UniquePtr &operator=(UniquePtr &&other) noexcept {
     if (this != &other) {
-      if (obj_) {
-        get_deleter()(obj_);
+      if (ptr()) {
+        get_deleter()(ptr());
       }
-      obj_ = std::exchange(other.obj_, nullptr);
-      deleter_ = std::move(other.deleter_);
+      ptr() = std::exchange(other.ptr(), nullptr);
+      deleter() = std::move(other.deleter());
     }
     return *this;
   }
-
+  // 析构
   ~UniquePtr() noexcept {
-    if (obj_) {
-      get_deleter()(obj_);
+    if (ptr()) {
+      get_deleter()(ptr());
     }
   }
 
@@ -58,43 +58,46 @@ public:
   UniquePtr &operator=(UniquePtr const &other) = delete;
 
   // 转换构造
-  constexpr explicit UniquePtr(pointer p) noexcept : obj_(p), deleter_() {}
+  constexpr explicit UniquePtr(pointer p) noexcept : data_(p, deleter_type{}) {}
   // 从nullptr的转换构造，允许隐式转换：UniquePtr<int> p = nullptr;
-  constexpr UniquePtr(std::nullptr_t) noexcept : obj_(nullptr), deleter_() {}
+  constexpr UniquePtr(std::nullptr_t) noexcept
+      : data_(nullptr, deleter_type{}) {}
   // 支持传递自定义删除器
   constexpr UniquePtr(pointer p, deleter_type d) noexcept
-      : obj_(p), deleter_(std::move(d)) {}
+      : data_(p, std::move(d)) {}
   constexpr UniquePtr(std::nullptr_t, deleter_type d) noexcept
-      : obj_(nullptr), deleter_(std::move(d)) {}
+      : data_(nullptr, std::move(d)) {}
 
   // 获取裸指针
-  constexpr pointer get() const noexcept { return obj_; }
-  constexpr deleter_type &get_deleter() noexcept { return deleter_; }
+  constexpr pointer get() const noexcept { return ptr(); }
+  constexpr deleter_type &get_deleter() noexcept { return deleter(); }
   constexpr deleter_type const &get_deleter() const noexcept {
-    return deleter_;
+    return deleter();
   }
   // 取消托管
-  pointer release() noexcept { return std::exchange(obj_, nullptr); }
+  pointer release() noexcept { return std::exchange(ptr(), nullptr); }
   // 托管另一个指针
   void reset(pointer p = nullptr) noexcept {
-    if (p != obj_) {
-      T *old_obj = std::exchange(obj_, p);
-      get_deleter()(old_obj);
+    if (p != ptr()) {
+      pointer old_obj = std::exchange(ptr(), p);
+      if (old_obj) {
+        get_deleter()(old_obj);
+      }
     }
   }
 
   void swap(UniquePtr &other) noexcept {
-    std::swap(obj_, other.obj_);
-    std::swap(deleter_, other.deleter_);
+    // 交换整个tuple
+    std::swap(data_, other.data_);
   }
 
   // 转换函数
-  constexpr explicit operator bool() const noexcept { return obj_ != nullptr; }
+  constexpr explicit operator bool() const noexcept { return ptr() != nullptr; }
 
   // =============运算符重载=============
   // 解引用
-  constexpr pointer operator->() const noexcept { return obj_; }
-  constexpr element_type &operator*() const noexcept { return *obj_; }
+  constexpr pointer operator->() const noexcept { return ptr(); }
+  constexpr element_type &operator*() const noexcept { return *ptr(); }
   // nullptr赋值，返回UniquePtr以支持链式赋值
   UniquePtr &operator=(std::nullptr_t) noexcept {
     reset();
@@ -109,27 +112,42 @@ public:
   }
   // UniquePtr与nullptr比较相等
   friend bool operator==(const UniquePtr &lhs, std::nullptr_t) noexcept {
-    return lhs.obj_ == nullptr;
+    return lhs.ptr() == nullptr;
   }
   friend bool operator!=(const UniquePtr &lhs, std::nullptr_t) noexcept {
-    return lhs.obj_ != nullptr;
+    return lhs.ptr() != nullptr;
   }
   friend bool operator==(std::nullptr_t, const UniquePtr &rhs) noexcept {
-    return rhs.obj_ == nullptr;
+    return rhs.ptr() == nullptr;
   }
   friend bool operator!=(std::nullptr_t, const UniquePtr &rhs) noexcept {
-    return rhs.obj_ != nullptr;
+    return rhs.ptr() != nullptr;
   }
 
 private:
-  pointer obj_;
-  deleter_type deleter_;
+  /*
+    主动继承实现EBO
+      class UniquePtr : private Deleter {
+        T* ptr_;
+        public:
+          ~UniquePtr(){*this(ptr_);}
+      };
+    但继承要求Deleter必须是类类型，其他可调用对象就无法作为删除器了，因此用tuple:
+      tuple递归继承展开，可以自动优化掉data_中delete_type, 实现EBO(空基类优化)
+  */
+  std::tuple<pointer, deleter_type> data_;
+
+  // 辅助访问函数, 获取data_中的数据
+  pointer &ptr() noexcept { return std::get<0>(data_); }
+  pointer const &ptr() const noexcept { return std::get<0>(data_); }
+  deleter_type &deleter() noexcept { return std::get<1>(data_); }
+  const deleter_type &deleter() const noexcept { return std::get<1>(data_); }
 };
 
 template <typename U, typename D>
 bool operator==(const UniquePtr<U, D> &lhs,
                 const UniquePtr<U, D> &rhs) noexcept {
-  return lhs.obj_ == rhs.obj_;
+  return lhs.ptr() == rhs.ptr();
 }
 } // namespace scratch
 #endif // UNIQUE_PTR_HPP
